@@ -35,6 +35,10 @@
         .btn-primary { background-color: #007bff; color: white; }
         .btn-primary:hover { background-color: #0056b3; }
         .btn-secondary { background-color: #6c757d; color: white; }
+
+        /* [추가] 로그 확인용 스타일 */
+        #logArea { margin-top: 20px; padding: 15px; background: #333; color: #0f0; font-family: 'Consolas', monospace; font-size: 12px; height: 150px; overflow-y: auto; border-radius: 4px; }
+        .log-time { color: #888; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -69,6 +73,19 @@
         </tr>
     </table>
 
+    <!-- [추가] 다중 AJAX 테스트 버튼 -->
+    <div class="btn-area" style="border-top: 1px dashed #ddd; padding-top: 20px; margin-top: 20px;">
+        <h3>[개발자 도구] 비동기 호출 테스트</h3>
+        <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+            부서정보(1초), 공통코드(2초), 사용자설정(1.5초)을 동시에 호출하여<br>
+            가장 늦은 2초 뒤에 모든 데이터를 합쳐서 처리합니다.
+        </p>
+        <button type="button" class="btn-secondary" id="btnMultiTest" style="background-color: #17a2b8;">다중 AJAX 호출 (Mock)</button>
+    </div>
+
+    <!-- [추가] 로그 영역 -->
+    <div id="logArea">준비 완료...</div>
+
     <div class="btn-area">
         <button type="button" class="btn-secondary" onclick="window.location.reload()">초기화</button>
         <button type="button" class="btn-primary" id="btnSave">저장</button>
@@ -81,28 +98,10 @@
  * (실제 프로젝트에서는 common.js 파일로 분리하세요)
  */
 (function($) {
+    // ... (기존 checkValidation, autoFormat 함수 생략) ...
+
     /**
      * [UI Component] 입력값 유효성 검사 (Validation Check)
-     * * @description
-     * 입력 필드(input, select 등)의 값에 대해 필수 입력, 길이 제한, 숫자 전용, 정규식 검사를 수행합니다.
-     * 단일 항목에 대한 검증 결과를 반환하며, 주로 저장/수정 버튼 클릭 시 호출하여 사용합니다.
-     * * @param {Object} options - 유효성 검사 옵션 객체
-     * @param {string}  options.name       - (필수 권장) 경고창(alert) 메시지에 표시될 항목의 한글 명칭 (예: '성명', '전화번호')
-     * @param {boolean} [options.required] - 필수 입력 여부 (true: 필수, false: 선택). 기본값 false.
-     * @param {number}  [options.maxLength]- 최대 입력 길이 제한. 0보다 크면 길이 체크 수행. 기본값 0.
-     * @param {boolean} [options.numberOnly]- 숫자만 입력되었는지 여부 체크. 콤마(,)는 제거하고 체크함. 기본값 false.
-     * @param {RegExp}  [options.regex]    - 커스텀 정규식 패턴 (예: 이메일, 전화번호 형식 등).
-     * @param {string}  [options.regexMsg] - 정규식 검증 실패 시 출력할 에러 메시지.
-     * * @returns {Object} result
-     * @returns {boolean} result.isValid - 검증 통과 여부 (true: 통과, false: 실패)
-     * @returns {string}  result.msg     - 검증 실패 시 사용자에게 보여줄 에러 메시지
-     * * @example
-     * var result = $('#userName').checkValidation({
-     * name: '성명',
-     * required: true,
-     * maxLength: 10
-     * });
-     * if (!result.isValid) alert(result.msg);
      */
     $.fn.checkValidation = function(options) {
         var settings = $.extend({
@@ -124,9 +123,9 @@
             return { isValid: false, msg: settings.name + '은(는) ' + settings.maxLength + '자 이내로 입력해주세요.' };
         }
 
-        // 숫자 전용 체크 (콤마/하이픈 제거 후 체크하는 것이 일반적이나, 여기선 순수 입력값 기준)
+        // 숫자 전용 체크
         if (settings.numberOnly) {
-            if (!/^[0-9]+$/.test(val.replace(/,/g, ''))) { // 콤마가 있어도 숫자로 인정하는 로직 추가
+            if (!/^[0-9]+$/.test(val.replace(/,/g, ''))) {
                 return { isValid: false, msg: settings.name + '은(는) 숫자만 입력 가능합니다.' };
             }
         }
@@ -143,17 +142,6 @@
 
     /**
      * [UI Component] 입력값 자동 포맷팅 (Auto Formatting)
-     * * @description
-     * 사용자가 입력하는 즉시(input, keyup 이벤트) 지정된 포맷으로 값을 변환하여 보여줍니다.
-     * 숫자 이외의 문자는 제거되며, 각 타입에 맞는 구분자(-, ,)가 자동으로 삽입됩니다.
-     * * @param {string} type - 포맷 타입 지정
-     * - 'phone' : 전화번호/휴대전화 번호 (010-1234-5678, 02-123-4567 등 지역번호 대응)
-     * - 'money' : 금액 표기 (천단위 콤마 삽입, 1,000,000)
-     * - 'date'  : 날짜 표기 (YYYY-MM-DD, 2025-12-11)
-     * - 'number': 순수 숫자만 허용 (문자 입력 방지)
-     * * @example
-     * $('#telNo').autoFormat('phone');
-     * $('.money-input').autoFormat('money');
      */
     $.fn.autoFormat = function(type) {
         return this.each(function() {
@@ -195,17 +183,85 @@
             });
         });
     };
+
+    /**
+     * [System] 다중 AJAX 호출 처리기 (Multi Ajax Caller)
+     * * @description
+     * 여러 개의 AJAX 요청을 병렬로 전송하고, 모든 요청이 완료될 때까지 기다린 후
+     * 결과를 하나의 배열로 반환합니다. 하나라도 실패하면 fail로 떨어집니다.
+     * * * @param {Array} requests - $.ajax 설정 객체들의 배열
+     * * @returns {Promise} - 모든 요청의 결과 데이터 배열 [result1, result2, ...]
+     * * * @example
+     * $.multiAjax([
+     * { url: '/api/dept', type: 'GET' },
+     * { url: '/api/code', type: 'GET' }
+     * ]).then(function(results) {
+     * var deptList = results[0];
+     * var codeList = results[1];
+     * });
+     */
+    $.multiAjax = function(requests) {
+        var ajaxCalls = [];
+
+        // 1. 요청 배열을 순회하며 실제 AJAX 호출(또는 Mock 호출) 생성
+        $.each(requests, function(i, req) {
+            // [Test용] URL에 'mock'이 포함되면 가짜 지연 응답 생성 (실제 사용시 제거 불필요)
+            if (req.url && req.url.indexOf('mock') > -1) {
+                var dfd = $.Deferred();
+                var delay = req.delay || 1000;
+                logToScreen('[' + req.name + '] 요청 시작 (예상시간: ' + delay/1000 + '초)');
+                
+                setTimeout(function() {
+                    logToScreen('[' + req.name + '] 응답 완료!');
+                    dfd.resolve(req.mockData || {}); // 성공 처리
+                }, delay);
+                ajaxCalls.push(dfd.promise());
+            } else {
+                // [Real] 실제 서버 통신
+                ajaxCalls.push($.ajax(req));
+            }
+        });
+
+        // 2. $.when을 사용하여 모든 Promise가 해결될 때까지 대기
+        return $.when.apply($, ajaxCalls).then(function() {
+            var results = [];
+            
+            // 3. 결과값 정규화 (Normalization)
+            // $.when은 인자가 1개일 때와 여러 개일 때 arguments 구조가 다릅니다.
+            if (ajaxCalls.length === 1) {
+                // 요청이 1개인 경우: arguments[0]이 데이터
+                results.push(arguments[0]);
+            } else {
+                // 요청이 여러 개인 경우: arguments[i][0]이 데이터 (jQuery Ajax 기준)
+                // Mock 객체의 경우 arguments[i] 자체가 데이터일 수 있으므로 분기 처리
+                for (var i = 0; i < arguments.length; i++) {
+                    var arg = arguments[i];
+                    // jQuery Ajax 응답은 [data, status, xhr] 배열임. 데이터는 0번째.
+                    if (Array.isArray(arg) && arg.length === 3 && arg[1] === 'success') {
+                        results.push(arg[0]);
+                    } else {
+                        // Mock 데이터는 배열이 아닐 수 있음
+                        results.push(arg);
+                    }
+                }
+            }
+            return results; // 정제된 데이터 배열 반환
+        });
+    };
+
 })(jQuery);
 
-/**
- * [Utility] 데이터 정제 함수
- * * @description
- * 서버 전송 전, 화면에 표시된 포맷팅 문자(콤마, 하이픈 등)를 제거하고 순수 숫자 데이터만 추출합니다.
- * * @param {string} id - 값을 추출할 DOM ID (예: '#salary')
- * @returns {string} - 숫자만 남은 문자열
- */
+// 3. 유틸리티: 순수 데이터 추출
 function getCleanVal(id) {
     return $(id).val().replace(/[^0-9]/g, '');
+}
+
+// [Test용] 화면 로그 출력 함수
+function logToScreen(msg) {
+    var $log = $('#logArea');
+    var time = new Date().toLocaleTimeString();
+    $log.append('<div><span class="log-time">[' + time + ']</span>' + msg + '</div>');
+    $log.scrollTop($log[0].scrollHeight);
 }
 
 /**
@@ -219,7 +275,56 @@ $(document).ready(function() {
     $('#salary').autoFormat('money');    // 금액
     $('#joinDate').autoFormat('date');   // 날짜
 
-    // [Step 2] 저장 버튼 이벤트
+    // [Step 2] 다중 AJAX 테스트 버튼 이벤트
+    $('#btnMultiTest').on('click', function() {
+        $('#logArea').empty();
+        logToScreen('--- 다중 호출 시작 (병렬 처리) ---');
+
+        // 여러 개의 API를 동시에 호출한다고 가정
+        var ajaxRequests = [
+            { 
+                name: '부서목록', 
+                url: 'mock/deptList', 
+                delay: 1000, // 1초 지연
+                mockData: [ { id: 'D01', name: '개발팀' }, { id: 'D02', name: '기획팀' } ] 
+            },
+            { 
+                name: '공통코드', 
+                url: 'mock/commonCode', 
+                delay: 2000, // 2초 지연 (가장 느림)
+                mockData: { positions: ['사원', '대리', '과장'], status: ['재직', '휴직'] } 
+            },
+            { 
+                name: '사용자설정', 
+                url: 'mock/userConfig', 
+                delay: 1500, // 1.5초 지연
+                mockData: { theme: 'dark', alarm: true } 
+            }
+        ];
+
+        // 공통 함수 호출
+        $.multiAjax(ajaxRequests).then(function(results) {
+            logToScreen('--- 모든 통신 완료 (All Done) ---');
+            
+            var deptList = results[0];
+            var commCode = results[1];
+            var userConfig = results[2];
+
+            console.log('부서목록:', deptList);
+            console.log('공통코드:', commCode);
+            console.log('사용자설정:', userConfig);
+
+            logToScreen('데이터 병합 완료. 콘솔(F12)에서 상세 데이터를 확인하세요.');
+            
+            // 화면에 데이터 적용 예시
+            alert("통신 완료!\n\n부서 개수: " + deptList.length + "\n직급 목록: " + commCode.positions.join(', '));
+        }).fail(function() {
+            logToScreen('통신 중 오류가 발생했습니다.');
+            alert('오류 발생');
+        });
+    });
+
+    // [Step 3] 저장 버튼 이벤트
     $('#btnSave').on('click', function() {
         
         // --- 1. 성명 검증 (필수, 5자 이내)
@@ -265,7 +370,7 @@ $(document).ready(function() {
         });
         if(!v6.isValid) { alert(v6.msg); $('#joinDate').focus(); return; }
 
-        // [Step 3] 데이터 전송 준비 (콤마 제거 등)
+        // [Step 4] 데이터 전송 준비 (콤마 제거 등)
         var saveData = {
             user_name: $('#userName').val(),
             emp_id: $('#empId').val(),
