@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Portal Gateway</title>
+    <style>
+        /* General Reset for IE11 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Malgun Gothic', 'Dotum', sans-serif;
+        }
+
+        body {
+            background: #1a2a6c;
+            background: -webkit-linear-gradient(to right, #f21111, #ff8c00, #1a2a6c);
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            width: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.3));
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 24px;
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            font-size: 14px;
+            color: #fdbb2d;
+        }
+
+        /* Secure Box */
+        .secure-box textarea {
+            width: 100%;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: #00ffcc;
+            padding: 10px;
+            resize: none;
+            outline: none;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        /* Target Selection */
+        .target-options {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .radio-group {
+            display: block;
+            margin-bottom: 8px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .radio-group input {
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        /* URL Input */
+        .url-box input {
+            width: 100%;
+            padding: 12px;
+            background: #fff;
+            border: none;
+            border-radius: 5px;
+            color: #333;
+            font-weight: bold;
+            outline: none;
+        }
+
+        /* Go Button */
+        .btn-go {
+            width: 100%;
+            padding: 15px;
+            background: #fdbb2d;
+            border: none;
+            border-radius: 5px;
+            color: #1a2a6c;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(253, 187, 45, 0.4);
+        }
+
+        .btn-go:hover {
+            background: #ffcc5c;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(253, 187, 45, 0.6);
+        }
+
+        .btn-go:active {
+            transform: translateY(1px);
+        }
+
+        .footer-note {
+            text-align: center;
+            font-size: 11px;
+            margin-top: 15px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>SECURE GATEWAY</h1>
+
+    <!-- 1. Securebox -->
+    <div class="section">
+        <label>SECURE BOX (Read Only)</label>
+        <div class="secure-box">
+            <textarea id="secureText" readonly>자동 로딩된 데이터가 표시됩니다.</textarea>
+        </div>
+    </div>
+
+    <!-- 2. Target Radio Selection -->
+    <div class="section">
+        <label>SELECT TARGET</label>
+        <div class="target-options">
+            <label class="radio-group">
+                <input type="radio" name="target" value="https://www.google.com" onchange="updateUrl(this.value)"> Google
+            </label>
+            <label class="radio-group">
+                <input type="radio" name="target" value="https://www.naver.com" onchange="updateUrl(this.value)"> Naver
+            </label>
+            <label class="radio-group">
+                <input type="radio" name="target" value="https://www.daum.net" onchange="updateUrl(this.value)"> Daum
+            </label>
+            <label class="radio-group">
+                <input type="radio" name="target" value="https://www.github.com" onchange="updateUrl(this.value)"> GitHub
+            </label>
+        </div>
+    </div>
+
+    <!-- 3. URL Box -->
+    <div class="section">
+        <label>TARGET URL</label>
+        <div class="url-box">
+            <input type="text" id="targetUrl" placeholder="Select a target above..." readonly>
+        </div>
+    </div>
+
+    <!-- 4. Go Button -->
+    <button class="btn-go" onclick="handleGo()">GO ACCESS</button>
+
+    <div class="footer-note">
+        * 저장된 데이터는 매일 오전 3시에 만료됩니다.
+    </div>
+</div>
+
+<script>
+    // 0. IE11 호환성을 위한 스크립트 (ES5 스타일)
+    var STORAGE_KEY = 'secure_box_data';
+    var EXPIRY_KEY = 'secure_box_expiry';
+
+    // 페이지 로드 시 실행
+    window.onload = function() {
+        checkAndLoadData();
+    };
+
+    // Target 라디오 선택 시 URL 업데이트
+    function updateUrl(url) {
+        document.getElementById('targetUrl').value = url;
+    }
+
+    // Go 버튼 클릭 핸들러
+    function handleGo() {
+        var url = document.getElementById('targetUrl').value;
+        var content = document.getElementById('secureText').value;
+
+        if (!url) {
+            alert('이동할 대상을 선택해주세요.');
+            return;
+        }
+
+        // 5. 브라우저 내부 저장소에 저장 (오전 3시 만료 로직 포함)
+        saveDataWithExpiry(content);
+
+        // 페이지 이동
+        window.location.href = url;
+    }
+
+    // 데이터 저장 및 만료일 설정
+    function saveDataWithExpiry(value) {
+        if (!window.localStorage) return;
+
+        var now = new Date();
+        var expiryDate = new Date();
+        
+        // 현재 시간이 오전 3시 이전이면 오늘의 오전 3시, 이후면 내일의 오전 3시 설정
+        if (now.getHours() < 3) {
+            expiryDate.setHours(3, 0, 0, 0);
+        } else {
+            expiryDate.setDate(expiryDate.getDate() + 1);
+            expiryDate.setHours(3, 0, 0, 0);
+        }
+
+        localStorage.setItem(STORAGE_KEY, value);
+        localStorage.setItem(EXPIRY_KEY, expiryDate.getTime().toString());
+    }
+
+    // 데이터 체크 및 로딩
+    function checkAndLoadData() {
+        if (!window.localStorage) return;
+
+        var storedExpiry = localStorage.getItem(EXPIRY_KEY);
+        var storedData = localStorage.getItem(STORAGE_KEY);
+        var textarea = document.getElementById('secureText');
+
+        // 만료 체크
+        if (storedExpiry) {
+            var now = new Date().getTime();
+            if (now > parseInt(storedExpiry)) {
+                // 만료됨 -> 삭제
+                localStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(EXPIRY_KEY);
+                return;
+            }
+        }
+
+        // textarea가 비어있거나 기본값이면 로딩
+        if (storedData) {
+            textarea.value = storedData;
+        }
+    }
+</script>
+
+</body>
+</html>
