@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>jQuery 1.11 클립보드 이미지 업로드</title>
+    <!-- Tailwind CSS (스타일링용) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jQuery 1.11.3 (레거시 버전) -->
+    <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
+    <!-- FontAwesome (아이콘) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        /* 포커스 시 아웃라인 스타일 */
+        #paste-area:focus {
+            outline: none;
+            border-color: #3b82f6; /* blue-500 */
+            background-color: #eff6ff; /* blue-50 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">
+            <i class="fas fa-paste mr-2"></i>이미지 붙여넣기
+        </h2>
+        
+        <p class="text-gray-600 mb-4 text-sm">
+            아래 박스를 클릭하고 캡처한 이미지를 <span class="font-bold text-blue-600">Ctrl + V</span> 하거나 
+            <span class="font-bold text-blue-600">드래그 앤 드롭</span> 하세요.
+        </p>
+
+        <!-- 붙여넣기 감지 영역 (tabindex="0"으로 포커스 가능하게 설정) -->
+        <div id="paste-area" tabindex="0" 
+             class="border-2 border-dashed border-gray-300 rounded-lg h-48 flex flex-col items-center justify-center text-gray-400 cursor-pointer transition-all mb-4 hover:border-blue-400">
+            <i class="fas fa-image text-4xl mb-2"></i>
+            <span class="text-center">여기를 클릭 후 붙여넣기(Ctrl+V) 하거나<br>이미지를 이곳에 놓으세요</span>
+        </div>
+
+        <!-- 미리보기 영역 (초기에는 숨김) -->
+        <div id="preview-box" class="hidden mb-4">
+            <div class="relative group">
+                <img id="preview-img" src="" alt="Preview" class="w-full rounded-lg border border-gray-200 shadow-sm max-h-64 object-contain bg-gray-50">
+                <button id="clear-btn" class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <p id="file-info" class="text-xs text-gray-500 mt-2 text-right"></p>
+        </div>
+
+        <!-- 상태 메시지 -->
+        <div id="status-msg" class="hidden mb-4 p-3 rounded text-sm text-center"></div>
+
+        <!-- 액션 버튼 -->
+        <button id="upload-btn" disabled 
+                class="w-full bg-gray-300 text-gray-500 font-bold py-3 px-4 rounded transition-colors flex items-center justify-center">
+            <i class="fas fa-cloud-upload-alt mr-2"></i> 서버에 저장
+        </button>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            var currentFile = null; // 현재 선택된 파일 객체 저장
+            var $pasteArea = $('#paste-area');
+
+            // 1. 붙여넣기 이벤트 감지
+            $pasteArea.on('paste', function(e) {
+                // jQuery에서는 originalEvent를 통해 네이티브 이벤트의 clipboardData에 접근해야 합니다.
+                var clipboardData = (e.originalEvent || e).clipboardData;
+                
+                if (!clipboardData || !clipboardData.items) {
+                    return;
+                }
+
+                var items = clipboardData.items;
+                var blob = null;
+
+                // 클립보드 아이템 중 이미지 찾기
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        blob = items[i].getAsFile();
+                        break;
+                    }
+                }
+
+                if (blob) {
+                    // 이미지가 발견되면 기본 붙여넣기(텍스트 등) 동작 방지
+                    e.preventDefault();
+                    handleImageFile(blob);
+                } else {
+                    showMessage('이미지가 클립보드에 없습니다.', 'error');
+                }
+            });
+
+            // 1-2. 드래그 앤 드롭 이벤트 감지
+            // 브라우저의 기본 드래그 앤 드롭 동작(파일 열기) 방지 및 시각 효과
+            $pasteArea.on('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).addClass('border-blue-500 bg-blue-50 text-blue-500');
+            });
+
+            $pasteArea.on('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).removeClass('border-blue-500 bg-blue-50 text-blue-500');
+            });
+
+            $pasteArea.on('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                $(this).removeClass('border-blue-500 bg-blue-50 text-blue-500');
+
+                // 드롭된 파일 가져오기
+                var files = e.originalEvent.dataTransfer.files;
+                
+                if (files.length > 0) {
+                    var file = files[0];
+                    if (file.type.indexOf('image') !== -1) {
+                        handleImageFile(file);
+                    } else {
+                        showMessage('이미지 파일만 업로드 가능합니다.', 'error');
+                    }
+                }
+            });
+
+            // 2. 이미지 처리 및 미리보기 함수
+            function handleImageFile(file) {
+                currentFile = file; // 전역 변수에 파일 저장
+                
+                var reader = new FileReader();
+                reader.onload = function(event) {
+                    // 미리보기 이미지 설정
+                    $('#preview-img').attr('src', event.target.result);
+                    $('#paste-area').addClass('hidden'); // 붙여넣기 영역 숨김
+                    $('#preview-box').removeClass('hidden'); // 미리보기 영역 표시
+                    
+                    // 파일 정보 표시 (이름은 클립보드 특성상 image.png 등으로 고정될 수 있음)
+                    var sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    $('#file-info').text('이미지 크기: ' + sizeMB + ' MB');
+
+                    // 업로드 버튼 활성화
+                    $('#upload-btn')
+                        .prop('disabled', false)
+                        .removeClass('bg-gray-300 text-gray-500')
+                        .addClass('bg-blue-600 text-white hover:bg-blue-700 cursor-pointer');
+                    
+                    showMessage('이미지가 준비되었습니다. 저장 버튼을 누르세요.', 'success');
+                };
+                reader.readAsDataURL(file);
+            }
+
+            // 3. 초기화 버튼 (X)
+            $('#clear-btn').on('click', function() {
+                resetUploader();
+            });
+
+            function resetUploader() {
+                currentFile = null;
+                $('#preview-box').addClass('hidden');
+                $pasteArea.removeClass('hidden border-blue-500 bg-blue-50 text-blue-500'); // 스타일 초기화 추가
+                $('#upload-btn')
+                    .prop('disabled', true)
+                    .addClass('bg-gray-300 text-gray-500')
+                    .removeClass('bg-blue-600 text-white hover:bg-blue-700 cursor-pointer')
+                    .html('<i class="fas fa-cloud-upload-alt mr-2"></i> 서버에 저장');
+                $('#status-msg').addClass('hidden');
+            }
+
+            // 4. 서버 전송 (jQuery Ajax)
+            $('#upload-btn').on('click', function() {
+                if (!currentFile) return;
+
+                // 로딩 상태 표시
+                var $btn = $(this);
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-2"></i> 업로드 중...');
+
+                // FormData 생성
+                var formData = new FormData();
+                // 'file'은 서버에서 받을 파라미터 이름입니다.
+                formData.append('file', currentFile, 'clipboard-image.png'); 
+
+                // --- [실제 서버 통신 코드 예시] ---
+                /*
+                $.ajax({
+                    url: '/api/upload', // 실제 업로드 URL
+                    type: 'POST',
+                    data: formData,
+                    processData: false, // jQuery가 데이터를 쿼리스트링으로 변환하지 않도록 설정 (필수)
+                    contentType: false, // jQuery가 Content-Type 헤더를 설정하지 않도록 설정 (필수, boundary 자동 생성)
+                    success: function(response) {
+                        showMessage('성공적으로 저장되었습니다!', 'success');
+                        setTimeout(resetUploader, 2000);
+                    },
+                    error: function(xhr, status, error) {
+                        showMessage('업로드 실패: ' + error, 'error');
+                        $btn.prop('disabled', false).html('<i class="fas fa-cloud-upload-alt mr-2"></i> 서버에 저장');
+                    }
+                });
+                */
+
+                // --- [테스트용 가짜 통신 (Mock)] ---
+                console.log("업로드 시작: ", currentFile);
+                
+                // 1.5초 후 성공 처리
+                setTimeout(function() {
+                    console.log("업로드 완료");
+                    showMessage('서버에 성공적으로 저장되었습니다!', 'success');
+                    $btn.html('<i class="fas fa-check mr-2"></i> 완료');
+                    
+                    // 2초 뒤 초기화
+                    setTimeout(resetUploader, 2000);
+                }, 1500);
+            });
+
+            // 유틸리티: 메시지 표시
+            function showMessage(msg, type) {
+                var colorClass = type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+                $('#status-msg')
+                    .removeClass('hidden bg-red-100 text-red-700 bg-green-100 text-green-700')
+                    .addClass(colorClass)
+                    .text(msg);
+            }
+        });
+    </script>
+</body>
+</html>
