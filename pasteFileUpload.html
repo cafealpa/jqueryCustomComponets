@@ -24,30 +24,43 @@
 
     <div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg">
         <h2 class="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">
-            <i class="fas fa-paste mr-2"></i>이미지 붙여넣기
+            <i class="fas fa-paste mr-2"></i>이미지 업로드
         </h2>
         
         <p class="text-gray-600 mb-4 text-sm">
-            아래 박스를 클릭하고 캡처한 이미지를 <span class="font-bold text-blue-600">Ctrl + V</span> 하거나 
-            <span class="font-bold text-blue-600">드래그 앤 드롭</span> 하세요.
+            이미지를 <span class="font-bold text-blue-600">붙여넣기(Ctrl+V)</span>, 
+            <span class="font-bold text-blue-600">드래그 앤 드롭</span> 하거나 
+            <span class="font-bold text-blue-600">파일 선택</span>을 하세요.
         </p>
 
-        <!-- 붙여넣기 감지 영역 (tabindex="0"으로 포커스 가능하게 설정) -->
+        <!-- 붙여넣기 및 드래그 영역 -->
+        <!-- tabindex="0"으로 포커스 가능하게 설정 -->
         <div id="paste-area" tabindex="0" 
-             class="border-2 border-dashed border-gray-300 rounded-lg h-48 flex flex-col items-center justify-center text-gray-400 cursor-pointer transition-all mb-4 hover:border-blue-400">
-            <i class="fas fa-image text-4xl mb-2"></i>
-            <span class="text-center">여기를 클릭 후 붙여넣기(Ctrl+V) 하거나<br>이미지를 이곳에 놓으세요</span>
+             class="border-2 border-dashed border-gray-300 rounded-lg h-40 flex flex-col items-center justify-center text-gray-400 cursor-pointer transition-all mb-4 hover:border-blue-400 focus:outline-none focus:border-blue-500 focus:bg-blue-50 relative">
+            
+            <i class="fas fa-cloud-upload-alt text-4xl mb-2"></i>
+            <span class="text-center text-sm mb-2">
+                여기를 클릭 후 붙여넣기(Ctrl+V) 또는<br>이미지를 이곳에 드래그하세요
+            </span>
+            
+            <!-- 파일 선택 버튼 (스타일링됨) -->
+            <button id="select-btn" class="mt-1 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-blue-600 font-semibold py-1 px-4 rounded text-sm shadow-sm transition-colors z-10">
+                <i class="far fa-folder-open mr-1"></i> 파일 선택
+            </button>
+
+            <!-- 실제 파일 인풋 (숨김) -->
+            <input type="file" id="file-input" class="hidden" multiple accept="image/*">
         </div>
 
-        <!-- 미리보기 영역 (초기에는 숨김) -->
-        <div id="preview-box" class="hidden mb-4">
-            <div class="relative group">
-                <img id="preview-img" src="" alt="Preview" class="w-full rounded-lg border border-gray-200 shadow-sm max-h-64 object-contain bg-gray-50">
-                <button id="clear-btn" class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
-                    <i class="fas fa-times"></i>
-                </button>
+        <!-- 썸네일 그리드 영역 -->
+        <div id="preview-container" class="hidden mb-4">
+            <div id="preview-grid" class="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto p-1 border border-gray-100 rounded bg-gray-50">
+                <!-- 동적으로 썸네일이 추가될 영역 -->
             </div>
-            <p id="file-info" class="text-xs text-gray-500 mt-2 text-right"></p>
+            <div class="flex justify-between items-center mt-2">
+                <span id="file-count" class="text-xs text-blue-600 font-bold"></span>
+                <button id="clear-all-btn" class="text-xs text-red-500 hover:text-red-700 underline">전체 삭제</button>
+            </div>
         </div>
 
         <!-- 상태 메시지 -->
@@ -60,42 +73,92 @@
         </button>
     </div>
 
+    <!-- 커스텀 삭제 확인 모달 -->
+    <div id="delete-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 h-full w-full hidden flex items-center justify-center z-50">
+        <div class="relative p-5 border w-80 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                    <i class="fas fa-trash-alt text-red-600 text-xl"></i>
+                </div>
+                <h3 class="text-lg leading-6 font-medium text-gray-900">이미지 삭제</h3>
+                <div class="mt-2 px-2 py-3">
+                    <p class="text-sm text-gray-500">선택한 이미지를 목록에서 삭제하시겠습니까?</p>
+                </div>
+                <div class="flex justify-center gap-3 mt-3">
+                    <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-300 focus:outline-none">
+                        취소
+                    </button>
+                    <button id="modal-confirm-btn" class="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 focus:outline-none">
+                        삭제
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         $(document).ready(function() {
-            var currentFile = null; // 현재 선택된 파일 객체 저장
+            var filesList = []; // 다중 파일을 저장할 배열
             var $pasteArea = $('#paste-area');
+            var $previewContainer = $('#preview-container');
+            var $previewGrid = $('#preview-grid');
+            var $fileInput = $('#file-input');
+            var $selectBtn = $('#select-btn');
+            
+            // 모달 관련 변수
+            var $deleteModal = $('#delete-modal');
+            var pendingDeleteIndex = null;
+            var $pendingDeleteEl = null;
 
-            // 1. 붙여넣기 이벤트 감지
-            $pasteArea.on('paste', function(e) {
-                // jQuery에서는 originalEvent를 통해 네이티브 이벤트의 clipboardData에 접근해야 합니다.
-                var clipboardData = (e.originalEvent || e).clipboardData;
+            // 0. 파일 선택 버튼 클릭 이벤트
+            $selectBtn.on('click', function(e) {
+                $fileInput.click();
+            });
+
+            // 0-1. 파일 인풋 변경 감지
+            $fileInput.on('change', function(e) {
+                var files = e.target.files;
+                var addedCount = 0;
                 
-                if (!clipboardData || !clipboardData.items) {
-                    return;
-                }
-
-                var items = clipboardData.items;
-                var blob = null;
-
-                // 클립보드 아이템 중 이미지 찾기
-                for (var i = 0; i < items.length; i++) {
-                    if (items[i].type.indexOf('image') !== -1) {
-                        blob = items[i].getAsFile();
-                        break;
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].type.indexOf('image') !== -1) {
+                        addFile(files[i]);
+                        addedCount++;
                     }
                 }
 
-                if (blob) {
-                    // 이미지가 발견되면 기본 붙여넣기(텍스트 등) 동작 방지
+                if (addedCount > 0) {
+                    showMessage(addedCount + '개의 파일이 선택되었습니다.', 'success');
+                }
+                
+                $(this).val('');
+            });
+
+
+            // 1. 붙여넣기 이벤트 감지
+            $pasteArea.on('paste', function(e) {
+                var clipboardData = (e.originalEvent || e).clipboardData;
+                
+                if (!clipboardData || !clipboardData.items) return;
+
+                var items = clipboardData.items;
+                var hasImage = false;
+
+                for (var i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        var blob = items[i].getAsFile();
+                        addFile(blob);
+                        hasImage = true;
+                    }
+                }
+
+                if (hasImage) {
                     e.preventDefault();
-                    handleImageFile(blob);
-                } else {
-                    showMessage('이미지가 클립보드에 없습니다.', 'error');
+                    showMessage('이미지가 붙여넣기 되었습니다.', 'success');
                 }
             });
 
             // 1-2. 드래그 앤 드롭 이벤트 감지
-            // 브라우저의 기본 드래그 앤 드롭 동작(파일 열기) 방지 및 시각 효과
             $pasteArea.on('dragover', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -113,104 +176,141 @@
                 e.stopPropagation();
                 $(this).removeClass('border-blue-500 bg-blue-50 text-blue-500');
 
-                // 드롭된 파일 가져오기
                 var files = e.originalEvent.dataTransfer.files;
+                var addedCount = 0;
                 
-                if (files.length > 0) {
-                    var file = files[0];
-                    if (file.type.indexOf('image') !== -1) {
-                        handleImageFile(file);
-                    } else {
-                        showMessage('이미지 파일만 업로드 가능합니다.', 'error');
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].type.indexOf('image') !== -1) {
+                        addFile(files[i]);
+                        addedCount++;
                     }
+                }
+
+                if (addedCount > 0) {
+                    showMessage(addedCount + '개의 이미지가 추가되었습니다.', 'success');
+                } else {
+                    showMessage('이미지 파일만 업로드 가능합니다.', 'error');
                 }
             });
 
-            // 2. 이미지 처리 및 미리보기 함수
-            function handleImageFile(file) {
-                currentFile = file; // 전역 변수에 파일 저장
-                
+            // 2. 파일 추가 및 썸네일 생성 함수
+            function addFile(file) {
+                filesList.push(file); 
+                // 주의: addFile이 비동기 reader보다 먼저 실행되므로 인덱스를 올바르게 캡처하기 위해 즉시 할당
+                var currentIndex = filesList.length - 1; 
+
                 var reader = new FileReader();
                 reader.onload = function(event) {
-                    // 미리보기 이미지 설정
-                    $('#preview-img').attr('src', event.target.result);
-                    $('#paste-area').addClass('hidden'); // 붙여넣기 영역 숨김
-                    $('#preview-box').removeClass('hidden'); // 미리보기 영역 표시
+                    var $thumbDiv = $('<div class="relative group h-24 border rounded overflow-hidden bg-white shadow-sm" data-index="' + currentIndex + '"></div>');
+                    var $img = $('<img src="' + event.target.result + '" class="w-full h-full object-cover">');
                     
-                    // 파일 정보 표시 (이름은 클립보드 특성상 image.png 등으로 고정될 수 있음)
-                    var sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-                    $('#file-info').text('이미지 크기: ' + sizeMB + ' MB');
+                    var $delBtn = $('<button type="button" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 z-10"><i class="fas fa-times"></i></button>');
+                    
+                    // 삭제 버튼 클릭 시 모달 띄우기 (confirm 대신 사용)
+                    $delBtn.on('click', function() {
+                        pendingDeleteIndex = currentIndex;
+                        $pendingDeleteEl = $thumbDiv;
+                        $deleteModal.removeClass('hidden'); // 모달 표시
+                    });
 
-                    // 업로드 버튼 활성화
-                    $('#upload-btn')
-                        .prop('disabled', false)
-                        .removeClass('bg-gray-300 text-gray-500')
-                        .addClass('bg-blue-600 text-white hover:bg-blue-700 cursor-pointer');
+                    $thumbDiv.append($img).append($delBtn);
+                    $previewGrid.append($thumbDiv);
                     
-                    showMessage('이미지가 준비되었습니다. 저장 버튼을 누르세요.', 'success');
+                    updateUI();
                 };
                 reader.readAsDataURL(file);
             }
 
-            // 3. 초기화 버튼 (X)
-            $('#clear-btn').on('click', function() {
-                resetUploader();
+            // 모달 취소 버튼
+            $('#modal-cancel-btn').on('click', function() {
+                $deleteModal.addClass('hidden');
+                pendingDeleteIndex = null;
+                $pendingDeleteEl = null;
+            });
+
+            // 모달 삭제 확인 버튼
+            $('#modal-confirm-btn').on('click', function() {
+                if (pendingDeleteIndex !== null && $pendingDeleteEl) {
+                    filesList[pendingDeleteIndex] = null;
+                    $pendingDeleteEl.remove();
+                    updateUI();
+                    showMessage('이미지가 삭제되었습니다.', 'success');
+                }
+                $deleteModal.addClass('hidden');
+                pendingDeleteIndex = null;
+                $pendingDeleteEl = null;
+            });
+
+            // UI 상태 업데이트
+            function updateUI() {
+                var validCount = 0;
+                for(var i=0; i<filesList.length; i++) {
+                    if(filesList[i] !== null) validCount++;
+                }
+
+                if (validCount > 0) {
+                    $previewContainer.removeClass('hidden');
+                    $('#file-count').text('총 ' + validCount + '개 파일 대기 중');
+                    
+                    $('#upload-btn')
+                        .prop('disabled', false)
+                        .removeClass('bg-gray-300 text-gray-500')
+                        .addClass('bg-blue-600 text-white hover:bg-blue-700 cursor-pointer')
+                        .html('<i class="fas fa-cloud-upload-alt mr-2"></i> ' + validCount + '개 파일 서버에 저장');
+                } else {
+                    $previewContainer.addClass('hidden');
+                    $('#upload-btn')
+                        .prop('disabled', true)
+                        .addClass('bg-gray-300 text-gray-500')
+                        .removeClass('bg-blue-600 text-white hover:bg-blue-700 cursor-pointer')
+                        .html('<i class="fas fa-cloud-upload-alt mr-2"></i> 서버에 저장');
+                }
+            }
+
+            // 3. 전체 삭제 및 초기화
+            $('#clear-all-btn').on('click', function() {
+                if(confirm('모든 파일을 삭제하시겠습니까?')) { // 전체 삭제는 간단히 confirm 시도 (안되면 바로 삭제 처리로 변경 가능)
+                   // 여기도 모달로 대체하거나, 우선 간단히 처리
+                   resetUploader();
+                }
+                // 만약 confirm이 안된다면 아래 주석 해제하여 바로 삭제
+                // resetUploader();
             });
 
             function resetUploader() {
-                currentFile = null;
-                $('#preview-box').addClass('hidden');
-                $pasteArea.removeClass('hidden border-blue-500 bg-blue-50 text-blue-500'); // 스타일 초기화 추가
-                $('#upload-btn')
-                    .prop('disabled', true)
-                    .addClass('bg-gray-300 text-gray-500')
-                    .removeClass('bg-blue-600 text-white hover:bg-blue-700 cursor-pointer')
-                    .html('<i class="fas fa-cloud-upload-alt mr-2"></i> 서버에 저장');
+                filesList = []; 
+                $previewGrid.empty(); 
+                $fileInput.val(''); 
+                updateUI();
                 $('#status-msg').addClass('hidden');
             }
 
             // 4. 서버 전송 (jQuery Ajax)
             $('#upload-btn').on('click', function() {
-                if (!currentFile) return;
+                var validFiles = [];
+                for(var i=0; i<filesList.length; i++) {
+                    if(filesList[i] !== null) validFiles.push(filesList[i]);
+                }
 
-                // 로딩 상태 표시
+                if (validFiles.length === 0) return;
+
                 var $btn = $(this);
                 $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-2"></i> 업로드 중...');
 
-                // FormData 생성
                 var formData = new FormData();
-                // 'file'은 서버에서 받을 파라미터 이름입니다.
-                formData.append('file', currentFile, 'clipboard-image.png'); 
-
-                // --- [실제 서버 통신 코드 예시] ---
-                /*
-                $.ajax({
-                    url: '/api/upload', // 실제 업로드 URL
-                    type: 'POST',
-                    data: formData,
-                    processData: false, // jQuery가 데이터를 쿼리스트링으로 변환하지 않도록 설정 (필수)
-                    contentType: false, // jQuery가 Content-Type 헤더를 설정하지 않도록 설정 (필수, boundary 자동 생성)
-                    success: function(response) {
-                        showMessage('성공적으로 저장되었습니다!', 'success');
-                        setTimeout(resetUploader, 2000);
-                    },
-                    error: function(xhr, status, error) {
-                        showMessage('업로드 실패: ' + error, 'error');
-                        $btn.prop('disabled', false).html('<i class="fas fa-cloud-upload-alt mr-2"></i> 서버에 저장');
-                    }
-                });
-                */
-
-                // --- [테스트용 가짜 통신 (Mock)] ---
-                console.log("업로드 시작: ", currentFile);
                 
-                // 1.5초 후 성공 처리
+                for (var i = 0; i < validFiles.length; i++) {
+                    formData.append('files[]', validFiles[i], validFiles[i].name || 'image_' + i + '.png');
+                }
+
+                console.log("업로드 시작, 파일 개수: ", validFiles.length);
+                
+                // --- [테스트용 가짜 통신 (Mock)] ---
                 setTimeout(function() {
                     console.log("업로드 완료");
-                    showMessage('서버에 성공적으로 저장되었습니다!', 'success');
+                    showMessage(validFiles.length + '개의 파일이 성공적으로 저장되었습니다!', 'success');
                     $btn.html('<i class="fas fa-check mr-2"></i> 완료');
                     
-                    // 2초 뒤 초기화
                     setTimeout(resetUploader, 2000);
                 }, 1500);
             });
